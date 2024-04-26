@@ -56,22 +56,27 @@ func main() {
 			argparse.Choice{
 				Key:   "jsonescape",
 				Value: textutil.JSONEscape,
+				Help:  "escape text into a JSON string",
 			},
 			argparse.Choice{
 				Key:   "sqlinsert",
 				Value: textutil.SQLInsert,
+				Help:  "translate a tab-delimited table with column headers into a SQL insert",
 			},
 			argparse.Choice{
 				Key:   "sqlescape",
 				Value: textutil.SQLEscape,
+				Help:  "escape text so into a SQL string literal",
 			},
 			argparse.Choice{
 				Key:   "sqlunescape",
 				Value: textutil.SQLUnescape,
+				Help:  "'unescape' a SQL string literal into a 'raw' value",
 			},
 			argparse.Choice{
 				Key:   "tabtofixed",
 				Value: textutil.NewTabFixer,
+				Help:  "add extra tabs to tab-separated values so that columns line up",
 			},
 		),
 	).MustBind(&transform)

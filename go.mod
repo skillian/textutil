@@ -12,3 +12,5 @@ require (
 	github.com/skillian/logging v0.0.0-20210406222847-057884e2cfcc // indirect
 	github.com/skillian/textwrap v0.0.0-20190707153458-15c7ee8d44ed // indirect
 )
+
+replace "github.com/skillian/argparse" => "../argparse"

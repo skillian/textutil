@@ -59,6 +59,11 @@ func main() {
 				Help:  "escape text into a JSON string",
 			},
 			argparse.Choice{
+				Key:   "jsonunescape",
+				Value: textutil.JSONUnescape,
+				Help:  "unescape JSON into a string",
+			},
+			argparse.Choice{
 				Key:   "sqlinsert",
 				Value: textutil.SQLInsert,
 				Help:  "translate a tab-delimited table with column headers into a SQL insert",

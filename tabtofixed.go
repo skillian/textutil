@@ -2,7 +2,6 @@ package textutil
 
 import (
 	"math/bits"
-	"os"
 	"strings"
 	"unicode"
 )
@@ -49,7 +48,7 @@ func SQLInsert(tabLen int) func(string) (string, error) {
 		},
 		PostFuncs: []func(string) (string, error){
 			func(s string) (string, error) {
-				lines := strings.Split(s, endLine)
+				lines := strings.Split(s, EndLine)
 				if len(lines) < 2 {
 					return s, nil
 				}
@@ -58,10 +57,10 @@ func SQLInsert(tabLen int) func(string) (string, error) {
 				}
 				return strings.Join([]string{
 					"INSERT INTO \"tableName\" (",
-					endLine,
+					EndLine,
 					lines[0],
-					endLine,
-					strings.Join(lines[1:], endLine),
+					EndLine,
+					strings.Join(lines[1:], EndLine),
 				}, ""), nil
 			},
 		},
@@ -76,7 +75,7 @@ type tabbedGridConfig struct {
 
 func newGridTabFixer(tabLen int, cfg tabbedGridConfig) func(string) (string, error) {
 	return func(text string) (string, error) {
-		grid, maxColLengths := splitGrid(text, endLine, "\t")
+		grid, maxColLengths := splitGrid(text, EndLine, "\t")
 		for _, gf := range cfg.GridFuncs {
 			var err error
 			grid, err = gf(grid)
@@ -113,7 +112,7 @@ func newGridTabFixer(tabLen int, cfg tabbedGridConfig) func(string) (string, err
 				sb = append(sb, []byte(field)...)
 				sb = append(sb, []byte(colPaddings[i][:paddingTabsCount])...)
 			}
-			sb = append(sb, []byte(endLine)...)
+			sb = append(sb, []byte(EndLine)...)
 		}
 		s := string(sb)
 		for _, pf := range cfg.PostFuncs {
@@ -153,16 +152,4 @@ func splitGrid(text, lineSep, fieldSep string) (grid [][]string, maxColLengths [
 		}
 	}
 	return
-}
-
-// TODO: Any way to make this const?
-var endLine string
-
-func init() {
-	// TODO: What's the right way to check if we're running on Windows?
-	if os.DevNull == "NUL" {
-		endLine = "\r\n"
-	} else {
-		endLine = "\n"
-	}
 }

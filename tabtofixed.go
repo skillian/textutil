@@ -1,19 +1,25 @@
 package textutil
 
 import (
+	"fmt"
 	"math/bits"
 	"strings"
 	"unicode"
 )
 
-func NewTabFixer(tabLen int) func(string) (string, error) {
-	return newGridTabFixer(tabLen, tabbedGridConfig{})
+type TabbedConfig struct {
+	TabSize int
+	Props map[string]any
 }
 
-func SQLInsert(tabLen int) func(string) (string, error) {
-	cfg := tabbedGridConfig{
-		GridFuncs: []func(grid [][]string) ([][]string, error){
-			func(grid [][]string) ([][]string, error) {
+func NewTabFixer(tabLen int) func(string) (string, error) {
+	return newGridTabFixer(TabbedConfig{TabSize: tabLen}, tabbedGridConfig{})
+}
+
+func SQLInsert(tc TabbedConfig) func(string) (string, error) {
+	tgc := tabbedGridConfig{
+		GridFuncs: []func(tc TabbedConfig, grid [][]string) ([][]string, error){
+			func(tc TabbedConfig, grid [][]string) ([][]string, error) {
 				if len(grid) < 2 {
 					return grid, nil
 				}
@@ -46,8 +52,8 @@ func SQLInsert(tabLen int) func(string) (string, error) {
 				return grid, nil
 			},
 		},
-		PostFuncs: []func(string) (string, error){
-			func(s string) (string, error) {
+		PostFuncs: []func(TabbedConfig, string) (string, error){
+			func(tc TabbedConfig, s string) (string, error) {
 				lines := strings.Split(s, EndLine)
 				if len(lines) < 2 {
 					return s, nil
@@ -55,8 +61,14 @@ func SQLInsert(tabLen int) func(string) (string, error) {
 				for i, line := range lines {
 					lines[i] = "\t" + strings.TrimRightFunc(line, unicode.IsSpace)
 				}
+				tableName := "tableName"
+				if tn, ok := tc.Props["tablename"]; ok {
+					tableName = fmt.Sprint(tn)
+				}
 				return strings.Join([]string{
-					"INSERT INTO \"tableName\" (",
+					"INSERT INTO \"",
+					tableName,
+					"\" (",
 					EndLine,
 					lines[0],
 					EndLine,
@@ -65,20 +77,20 @@ func SQLInsert(tabLen int) func(string) (string, error) {
 			},
 		},
 	}
-	return newGridTabFixer(tabLen, cfg)
+	return newGridTabFixer(tc, tgc)
 }
 
 type tabbedGridConfig struct {
-	GridFuncs []func([][]string) ([][]string, error)
-	PostFuncs []func(string) (string, error)
+	GridFuncs []func(TabbedConfig, [][]string) ([][]string, error)
+	PostFuncs []func(TabbedConfig, string) (string, error)
 }
 
-func newGridTabFixer(tabLen int, cfg tabbedGridConfig) func(string) (string, error) {
+func newGridTabFixer(tc TabbedConfig, cfg tabbedGridConfig) func(string) (string, error) {
 	return func(text string) (string, error) {
 		grid, maxColLengths := splitGrid(text, EndLine, "\t")
 		for _, gf := range cfg.GridFuncs {
 			var err error
-			grid, err = gf(grid)
+			grid, err = gf(tc, grid)
 			if err != nil {
 				return "", err
 			}
@@ -97,16 +109,16 @@ func newGridTabFixer(tabLen int, cfg tabbedGridConfig) func(string) (string, err
 		}
 		colPaddings := make([]string, len(maxColLengths))
 		for i, length := range maxColLengths {
-			length = (length / tabLen) + 1
+			length = (length / tc.TabSize) + 1
 			colPaddings[i] = strings.Repeat("\t", length)
-			maxColLengths[i] = length * tabLen
+			maxColLengths[i] = length * tc.TabSize
 		}
 		sb := make([]byte, 0, 1<<bits.Len(uint(len(text)+1)))
 		for _, fields := range grid {
 			for i, field := range fields {
 				paddingSpacesCount := maxColLengths[i] - len(field)
-				paddingTabsCount := paddingSpacesCount / tabLen
-				if paddingTabsCount*tabLen < paddingSpacesCount {
+				paddingTabsCount := paddingSpacesCount / tc.TabSize
+				if paddingTabsCount*tc.TabSize < paddingSpacesCount {
 					paddingTabsCount++
 				}
 				sb = append(sb, []byte(field)...)
@@ -117,7 +129,7 @@ func newGridTabFixer(tabLen int, cfg tabbedGridConfig) func(string) (string, err
 		s := string(sb)
 		for _, pf := range cfg.PostFuncs {
 			var err error
-			s, err = pf(s)
+			s, err = pf(tc, s)
 			if err != nil {
 				return "", err
 			}

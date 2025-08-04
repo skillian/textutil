@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -37,13 +38,15 @@ func main() {
 			"optional output file to use instead of the clipboard",
 		),
 	).MustBind(&output)
+	const defaultTabSize = 8
 	parser.MustAddArgument(
 		argparse.OptionStrings("--tab-size"),
 		argparse.ActionFunc(argparse.Store),
 		argparse.Type(argparse.Int),
-		argparse.Default(8),
+		argparse.Default(defaultTabSize),
 		argparse.Help(
-			"Specify the size of tabs (default: 8)",
+			"Specify the size of tabs (default: %d)",
+			defaultTabSize,
 		),
 	).MustBind(&tabSize)
 	parser.MustAddArgument(
@@ -85,7 +88,14 @@ func main() {
 			},
 		),
 	).MustBind(&transform)
-	_ = parser.MustParseArgs()
+	propsArg := parser.MustAddArgument(
+		argparse.OptionStrings("-p", "--property"),
+		argparse.Nargs(2),
+		argparse.MetaVar("NAME", "VALUE"),
+		argparse.ActionFunc(argparse.Append),
+		argparse.Help("property keys and values used when formatting"),
+	)
+	ns := parser.MustParseArgs()
 	var reader readAller
 	if input != "" {
 		reader = filename(input)
@@ -102,16 +112,26 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	transformerFunc, ok := transform.(func(string) (string, error))
-	if !ok {
-		switch x := transform.(type) {
-		case func(int) func(string) (string, error):
-			transformerFunc = x(tabSize)
-		default:
-			panic(errors.Errorf("unknown transformer %[1]v (type: %[1]T)", x))
+	tc := textutil.TabbedConfig{
+		TabSize: tabSize,
+	}
+	if v, ok := ns.Get(propsArg); ok {
+		vs := v.([]any)
+		tc.Props = make(map[string]any, len(vs))
+		for _, v := range vs {
+			w := v.([]any)
+			tc.Props[fmt.Sprint(w[0])] = w[1]
 		}
 	}
-	if text, err = transformerFunc(text); err != nil {
+	switch f := transform.(type) {
+	case func(textutil.TabbedConfig, string) (string, error):
+		text, err = f(tc, text)
+	case func(textutil.TabbedConfig) func(string) (string, error):
+		text, err = f(tc)(text)
+	default:
+		panic(errors.Errorf("unknown transformer %[1]v (type: %[1]T)", f))
+	}
+	if err != nil {
 		panic(err)
 	}
 	if err = writer.writeAll(text); err != nil {

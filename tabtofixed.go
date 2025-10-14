@@ -2,21 +2,20 @@ package textutil
 
 import (
 	"fmt"
-	"math/bits"
 	"strings"
 	"unicode"
 )
 
 type TabbedConfig struct {
 	TabSize int
-	Props map[string]any
+	Props   map[string]any
 }
 
-func NewTabFixer(tabLen int) func(string) (string, error) {
+func NewTabFixer(tabLen int) func(Gridder) (string, error) {
 	return newGridTabFixer(TabbedConfig{TabSize: tabLen}, tabbedGridConfig{})
 }
 
-func SQLInsert(tc TabbedConfig) func(string) (string, error) {
+func SQLInsert(tc TabbedConfig) func(Gridder) (string, error) {
 	tgc := tabbedGridConfig{
 		GridFuncs: []func(tc TabbedConfig, grid [][]string) ([][]string, error){
 			func(tc TabbedConfig, grid [][]string) ([][]string, error) {
@@ -85,9 +84,56 @@ type tabbedGridConfig struct {
 	PostFuncs []func(TabbedConfig, string) (string, error)
 }
 
-func newGridTabFixer(tc TabbedConfig, cfg tabbedGridConfig) func(string) (string, error) {
-	return func(text string) (string, error) {
-		grid, maxColLengths := splitGrid(text, EndLine, "\t")
+// Gridder transforms into a grid of text fields.
+//
+// This is a "hack" to deal with the original implementations of
+// table parsers expecting the source to be TSV strings.  Now when
+// textutil is wrapped by another library, you can use the
+// PassThruGridder to skip any string re-parsing issues
+type Gridder interface {
+	Grid() (grid [][]string, maxColLengths []int)
+}
+
+// TextSplitGridder splits a single long string of text into records
+// and fields in those records.
+type TextSplitGridder struct {
+	Text     string
+	LineSep  string
+	FieldSep string
+}
+
+func (sg TextSplitGridder) Grid() (grid [][]string, maxColLengths []int) {
+	return splitGrid(sg.Text, sg.LineSep, sg.FieldSep)
+}
+
+// PassThruGridder "passes through" its grid
+type PassThruGridder struct {
+	G [][]string
+}
+
+func (pg PassThruGridder) Grid() (grid [][]string, maxColLengths []int) {
+	{
+		cols := 0
+		for _, row := range pg.G {
+			if len(row) > cols {
+				cols = len(row)
+			}
+		}
+		maxColLengths = make([]int, cols)
+	}
+	for _, row := range pg.G {
+		for i, f := range row {
+			if maxColLengths[i] < len(f) {
+				maxColLengths[i] = len(f)
+			}
+		}
+	}
+	return pg.G, maxColLengths
+}
+
+func newGridTabFixer(tc TabbedConfig, cfg tabbedGridConfig) func(Gridder) (string, error) {
+	return func(g Gridder) (string, error) {
+		grid, maxColLengths := g.Grid()
 		for _, gf := range cfg.GridFuncs {
 			var err error
 			grid, err = gf(tc, grid)
@@ -113,7 +159,13 @@ func newGridTabFixer(tc TabbedConfig, cfg tabbedGridConfig) func(string) (string
 			colPaddings[i] = strings.Repeat("\t", length)
 			maxColLengths[i] = length * tc.TabSize
 		}
-		sb := make([]byte, 0, 1<<bits.Len(uint(len(text)+1)))
+		sb := make([]byte, 0, func() int {
+			sum := 0
+			for _, length := range maxColLengths {
+				sum += length
+			}
+			return sum
+		}()*len(grid))
 		for _, fields := range grid {
 			for i, field := range fields {
 				paddingSpacesCount := maxColLengths[i] - len(field)

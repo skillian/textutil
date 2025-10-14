@@ -13,15 +13,39 @@ import (
 	"github.com/skillian/textutil"
 )
 
+const (
+	defaultFieldSep  = "\t"
+	defaultRecordSep = textutil.EndLine
+)
+
 func main() {
 	var input, output string
 	var tabSize int
 	var transform interface{}
+	var fieldSep, recordSep string
 	parser := argparse.MustNewArgumentParser(
 		argparse.Description(
 			"Utility for transforming text",
 		),
 	)
+	parser.MustAddArgument(
+		argparse.OptionStrings("-f", "--field"),
+		argparse.ActionFunc(argparse.Store),
+		argparse.Default(defaultFieldSep),
+		argparse.Help(
+			"Specify a custom field separator in the text (default: %q)",
+			defaultFieldSep,
+		),
+	).MustBind(&fieldSep)
+	parser.MustAddArgument(
+		argparse.OptionStrings("-r", "--record"),
+		argparse.ActionFunc(argparse.Store),
+		argparse.Default(defaultRecordSep),
+		argparse.Help(
+			"Specify a custom record separator in the text (default: %q)",
+			defaultRecordSep,
+		),
+	).MustBind(&recordSep)
 	parser.MustAddArgument(
 		argparse.OptionStrings("-i", "--input"),
 		argparse.ActionFunc(argparse.Store),
@@ -128,6 +152,10 @@ func main() {
 		text, err = f(tc, text)
 	case func(textutil.TabbedConfig) func(string) (string, error):
 		text, err = f(tc)(text)
+	case func(textutil.TabbedConfig, textutil.Gridder) (string, error):
+		text, err = f(tc, textutil.TextSplitGridder{Text: text, LineSep: recordSep, FieldSep: fieldSep})
+	case func(textutil.TabbedConfig) func(textutil.Gridder) (string, error):
+		text, err = f(tc)(textutil.TextSplitGridder{Text: text, LineSep: recordSep, FieldSep: fieldSep})
 	default:
 		panic(errors.Errorf("unknown transformer %[1]v (type: %[1]T)", f))
 	}

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func JSONUnescape(_ int) func(string) (string, error) {
+func JSONUnescape(tc TabbedConfig) func(string) (string, error) {
 	return func(s string) (string, error) {
 		var v interface{}
 		if err := json.Unmarshal([]byte(s), &v); err != nil {
@@ -22,7 +22,7 @@ func JSONUnescape(_ int) func(string) (string, error) {
 	}
 }
 
-func JSONEscape(_ int) func(string) (string, error) {
+func JSONEscape(tc TabbedConfig) func(string) (string, error) {
 	return func(text string) (string, error) {
 		sb := strings.Builder{}
 		sb.WriteByte('"')

@@ -81,6 +81,11 @@ func main() {
 		),
 		argparse.Choices(
 			argparse.Choice{
+				Key:   "htmltable",
+				Value: textutil.HTMLTable,
+				Help:  "convert tsv into HTML table",
+			},
+			argparse.Choice{
 				Key:   "jsonescape",
 				Value: textutil.JSONEscape,
 				Help:  "escape text into a JSON string",

@@ -64,10 +64,16 @@ func SQLInsert(tc TabbedConfig) func(Gridder) (string, error) {
 				if tn, ok := tc.Props["tablename"]; ok {
 					tableName = fmt.Sprint(tn)
 				}
+				quote := ""
+				if !strings.ContainsRune(tableName, '"') {
+					quote = "\""
+				}
 				return strings.Join([]string{
-					"INSERT INTO \"",
+					"INSERT INTO ",
+					quote,
 					tableName,
-					"\" (",
+					quote,
+					" (",
 					EndLine,
 					lines[0],
 					EndLine,

@@ -1,7 +1,9 @@
 package textutil
 
 import (
+	"encoding/csv"
 	"fmt"
+	"io"
 	"strings"
 	"unicode"
 )
@@ -11,8 +13,8 @@ type TabbedConfig struct {
 	Props   map[string]any
 }
 
-func NewTabFixer(tabLen int) func(Gridder) (string, error) {
-	return newGridTabFixer(TabbedConfig{TabSize: tabLen}, tabbedGridConfig{})
+func NewTabFixer(tc TabbedConfig) func(Gridder) (string, error) {
+	return newGridTabFixer(tc, tabbedGridConfig{})
 }
 
 func SQLInsert(tc TabbedConfig) func(Gridder) (string, error) {
@@ -97,7 +99,7 @@ type tabbedGridConfig struct {
 // textutil is wrapped by another library, you can use the
 // PassThruGridder to skip any string re-parsing issues
 type Gridder interface {
-	Grid() (grid [][]string, maxColLengths []int)
+	Grid() (grid [][]string, maxColLengths []int, err error)
 }
 
 // TextSplitGridder splits a single long string of text into records
@@ -108,8 +110,10 @@ type TextSplitGridder struct {
 	FieldSep string
 }
 
-func (sg TextSplitGridder) Grid() (grid [][]string, maxColLengths []int) {
-	return splitGrid(sg.Text, sg.LineSep, sg.FieldSep)
+func (sg TextSplitGridder) Grid() (grid [][]string, maxColLengths []int, err error) {
+	grid, maxColLengths = splitGrid(sg.Text, sg.LineSep, sg.FieldSep)
+	err = nil
+	return
 }
 
 // PassThruGridder "passes through" its grid
@@ -117,29 +121,16 @@ type PassThruGridder struct {
 	G [][]string
 }
 
-func (pg PassThruGridder) Grid() (grid [][]string, maxColLengths []int) {
-	{
-		cols := 0
-		for _, row := range pg.G {
-			if len(row) > cols {
-				cols = len(row)
-			}
-		}
-		maxColLengths = make([]int, cols)
-	}
-	for _, row := range pg.G {
-		for i, f := range row {
-			if maxColLengths[i] < len(f) {
-				maxColLengths[i] = len(f)
-			}
-		}
-	}
-	return pg.G, maxColLengths
+func (pg PassThruGridder) Grid() (grid [][]string, maxColLengths []int, err error) {
+	return pg.G, getMaxColLengths(pg.G), nil
 }
 
 func newGridTabFixer(tc TabbedConfig, cfg tabbedGridConfig) func(Gridder) (string, error) {
 	return func(g Gridder) (string, error) {
-		grid, maxColLengths := g.Grid()
+		grid, maxColLengths, err := g.Grid()
+		if err != nil {
+			return "", fmt.Errorf("getting grid: %w", err)
+		}
 		for _, gf := range cfg.GridFuncs {
 			var err error
 			grid, err = gf(tc, grid)
@@ -222,4 +213,34 @@ func splitGrid(text, lineSep, fieldSep string) (grid [][]string, maxColLengths [
 		}
 	}
 	return
+}
+
+type CsvGridder struct {
+	Reader io.Reader
+}
+
+func (cg CsvGridder) Grid() (grid [][]string, maxColLengths []int, err error) {
+	grid, err = csv.NewReader(cg.Reader).ReadAll()
+	maxColLengths = getMaxColLengths(grid)
+	return
+}
+
+func getMaxColLengths(grid [][]string) (maxColLengths []int) {
+	{
+		cols := 0
+		for _, row := range grid {
+			if len(row) > cols {
+				cols = len(row)
+			}
+		}
+		maxColLengths = make([]int, cols)
+	}
+	for _, row := range grid {
+		for i, f := range row {
+			if maxColLengths[i] < len(f) {
+				maxColLengths[i] = len(f)
+			}
+		}
+	}
+	return maxColLengths
 }

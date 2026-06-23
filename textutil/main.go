@@ -19,6 +19,7 @@ const (
 )
 
 func main() {
+	var isCsv bool
 	var input, output string
 	var tabSize int
 	var transform interface{}
@@ -28,6 +29,12 @@ func main() {
 			"Utility for transforming text",
 		),
 	)
+	parser.MustAddArgument(
+		argparse.OptionStrings("-c", "--csv"),
+		argparse.ActionFunc(argparse.StoreTrue),
+		argparse.Default(false),
+		argparse.Help("Specify source is a CSV"),
+	).MustBind(&isCsv)
 	parser.MustAddArgument(
 		argparse.OptionStrings("-f", "--field"),
 		argparse.ActionFunc(argparse.Store),
@@ -152,15 +159,23 @@ func main() {
 			tc.Props[fmt.Sprint(w[0])] = w[1]
 		}
 	}
+	gridder := func() textutil.Gridder {
+		if isCsv {
+			return textutil.CsvGridder{
+				Reader: strings.NewReader(text),
+			}
+		}
+		return textutil.TextSplitGridder{Text: text, LineSep: recordSep, FieldSep: fieldSep}
+	}
 	switch f := transform.(type) {
 	case func(textutil.TabbedConfig, string) (string, error):
 		text, err = f(tc, text)
 	case func(textutil.TabbedConfig) func(string) (string, error):
 		text, err = f(tc)(text)
 	case func(textutil.TabbedConfig, textutil.Gridder) (string, error):
-		text, err = f(tc, textutil.TextSplitGridder{Text: text, LineSep: recordSep, FieldSep: fieldSep})
+		text, err = f(tc, gridder())
 	case func(textutil.TabbedConfig) func(textutil.Gridder) (string, error):
-		text, err = f(tc)(textutil.TextSplitGridder{Text: text, LineSep: recordSep, FieldSep: fieldSep})
+		text, err = f(tc)(gridder())
 	default:
 		panic(errors.Errorf("unknown transformer %[1]v (type: %[1]T)", f))
 	}

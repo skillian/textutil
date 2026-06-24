@@ -80,6 +80,47 @@ func main() {
 			defaultTabSize,
 		),
 	).MustBind(&tabSize)
+	type griddererFunc func(s string) (textutil.Gridder, error)
+	var gridderer griddererFunc
+	parser.MustAddArgument(
+		argparse.OptionStrings("-s", "--source"),
+		argparse.ActionFunc(argparse.Store),
+		argparse.Default("tsv"),
+		argparse.Help(
+			"source format (default: tab-separated \"tsv\")",
+		),
+		argparse.Choices(
+			argparse.Choice{
+				Key: "csv",
+				Value: griddererFunc(func(s string) (textutil.Gridder, error) {
+					return textutil.CsvGridder{
+						Reader: strings.NewReader(s),
+					}, nil
+				}),
+				Help: "Comma-separated values",
+			},
+			argparse.Choice{
+				Key: "tsv",
+				Value: griddererFunc(func(s string) (textutil.Gridder, error) {
+					return textutil.TextSplitGridder{
+						Text:     s,
+						LineSep:  "\n",
+						FieldSep: "\t",
+					}, nil
+				}),
+				Help: "Unquoted tab and newline-separated values and records",
+			},
+			argparse.Choice{
+				Key: "chamentityxml",
+				Value: griddererFunc(func(s string) (textutil.Gridder, error) {
+					return textutil.ChamaeleonEntityXMLGridder{
+						XMLText: s,
+					}, nil
+				}),
+				Help: "Chamaeleon XML Entity array",
+			},
+		),
+	).MustBind(&gridderer)
 	parser.MustAddArgument(
 		argparse.OptionStrings("-t", "--transform"),
 		argparse.ActionFunc(argparse.Store),
@@ -159,23 +200,22 @@ func main() {
 			tc.Props[fmt.Sprint(w[0])] = w[1]
 		}
 	}
-	gridder := func() textutil.Gridder {
-		if isCsv {
-			return textutil.CsvGridder{
-				Reader: strings.NewReader(text),
-			}
-		}
-		return textutil.TextSplitGridder{Text: text, LineSep: recordSep, FieldSep: fieldSep}
-	}
+	var gridder textutil.Gridder
 	switch f := transform.(type) {
 	case func(textutil.TabbedConfig, string) (string, error):
 		text, err = f(tc, text)
 	case func(textutil.TabbedConfig) func(string) (string, error):
 		text, err = f(tc)(text)
 	case func(textutil.TabbedConfig, textutil.Gridder) (string, error):
-		text, err = f(tc, gridder())
+		gridder, err = gridderer(text)
+		if err == nil {
+			text, err = f(tc, gridder)
+		}
 	case func(textutil.TabbedConfig) func(textutil.Gridder) (string, error):
-		text, err = f(tc)(gridder())
+		gridder, err = gridderer(text)
+		if err == nil {
+			text, err = f(tc)(gridder)
+		}
 	default:
 		panic(errors.Errorf("unknown transformer %[1]v (type: %[1]T)", f))
 	}
